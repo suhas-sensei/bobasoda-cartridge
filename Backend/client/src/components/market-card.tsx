@@ -4,14 +4,24 @@ import { useEthPrice } from "../hooks/useEthPrice"
 import EthPriceChart from "./eth-price-chart"
 import { useDojoContext } from "../dojo/useDojoContext"
 
+interface ActiveBet {
+  amount: string
+  direction: "up" | "down"
+  marketName: string
+}
+
 interface MarketCardProps {
   marketName: string
   onSwipeComplete: (direction: "up" | "down", marketName: string) => void
   hasSwipedThisRound: boolean
   onTimerReset: () => void
+  activeBet: ActiveBet | null
+  onBetSettlement: (lockPrice: number, closePrice: number) => void
+  totalPool: number
+  userMultiplier: number
 }
 
-export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisRound, onTimerReset }: MarketCardProps) {
+export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisRound, onTimerReset, activeBet, onBetSettlement, totalPool, userMultiplier }: MarketCardProps) {
   // Only fetch ETH price for ETH market
   const { price: ethPrice, isLoading: isPriceLoading } = marketName === "ETH" ? useEthPrice() : { price: null, isLoading: false }
   // Get Dojo contract actions
@@ -49,10 +59,16 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
       // Call start_game at 1 second
       if (elapsed >= 1000 && !hasCalledStartGame && actions && account) {
         setHasCalledStartGame(true)
-        console.log('🎮 Calling start_game at 1 second...')
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('🎮 NEW ROUND STARTED')
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log(`   Duration: 60 seconds`)
+        console.log(`   Betting Phase: 0-30s`)
+        console.log(`   Lock Phase: 30-60s`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
         actions.startGame(account)
           .then(() => {
-            console.log('✅ start_game called successfully!')
+            console.log('✅ start_game called successfully!\n')
           })
           .catch((error) => {
             console.error('❌ Failed to call start_game:', error)
@@ -63,8 +79,14 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
       if (progress >= 50 && !hasLockedPrice && marketName === "ETH" && ethPrice !== null) {
         setLockPrice(ethPrice)
         setHasLockedPrice(true)
-        console.log(`🔒 Lock Price captured at 50%: $${ethPrice.toFixed(4)}`)
-        console.log(`   Users are betting: Will close price be higher or lower than $${ethPrice.toFixed(4)}?`)
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('🔒 LOCK PRICE CAPTURED')
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log(`   Lock Price: $${ethPrice.toFixed(4)}`)
+        console.log(`   Time: 30 seconds (50% progress)`)
+        console.log(`   🚫 Betting is now CLOSED`)
+        console.log(`   ⏳ Waiting for close price at 60s...`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
       }
 
       // Call end_game at 59 seconds
@@ -73,7 +95,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
         console.log('🏁 Calling end_game at 59 seconds...')
         actions.endGame(account)
           .then(() => {
-            console.log('✅ end_game called successfully!')
+            console.log('✅ end_game called successfully!\n')
           })
           .catch((error) => {
             console.error('❌ Failed to call end_game:', error)
@@ -82,11 +104,15 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
 
       // Reset for next round at 100%
       if (progress >= 100) {
-        console.log(`🏁 Round ended at 100%. Close Price: $${ethPrice?.toFixed(4) || 'N/A'}`)
         if (lockPrice !== null && ethPrice !== null) {
           const diff = ethPrice - lockPrice
-          const winner = diff > 0 ? 'BULLS' : diff < 0 ? 'BEARS' : 'TIE'
-          console.log(`   Winner: ${winner} (Close: $${ethPrice.toFixed(4)} vs Lock: $${lockPrice.toFixed(4)}, Diff: ${diff > 0 ? '+' : ''}${diff.toFixed(4)})`)
+          const winner = diff > 0 ? 'UP' : diff < 0 ? 'DOWN' : 'TIE'
+
+          // Settle bet if there's an active bet for this market
+          if (activeBet) {
+            // Call settlement handler
+            onBetSettlement(lockPrice, ethPrice)
+          }
         }
         // Reset for next round
         timerStartRef.current = Date.now()
@@ -100,7 +126,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
     const interval = setInterval(updateTimer, 50) // Update every 50ms for smooth animation
 
     return () => clearInterval(interval)
-  }, [onTimerReset, intervalSeconds, bufferSeconds, ethPrice, marketName, hasLockedPrice, lockPrice, hasCalledStartGame, hasCalledEndGame, actions, account])
+  }, [onTimerReset, intervalSeconds, bufferSeconds, ethPrice, marketName, hasLockedPrice, lockPrice, hasCalledStartGame, hasCalledEndGame, actions, account, activeBet, onBetSettlement])
 
   useEffect(() => {
     // Initialize audio on client side with mobile-friendly settings and volume boost
@@ -397,19 +423,19 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
           <div className="relative z-10">
             <div className="mb-4 sm:mb-5">
               <p className="text-black text-xs sm:text-sm opacity-75 mb-1">NEXT ROUND</p>
-              <p className="text-black font-bold text-2xl sm:text-3xl">147 STRK</p>
+              <p className="text-black font-bold text-2xl sm:text-3xl">{totalPool.toFixed(2)} STRK</p>
               <p className="text-black text-xs sm:text-sm opacity-60">PRIZE POOL</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:gap-6">
               <div>
-                <p className="text-black text-xs sm:text-sm opacity-75 mb-1">Down</p>
-                <p className="font-bold text-3xl sm:text-4xl" style={{ color: '#ed4b9e' }}>1.5x</p>
-                <p className="text-black text-[10px] sm:text-xs opacity-60">payout</p>
+                <p className="text-black text-xs sm:text-sm opacity-75 mb-1">Your Stake</p>
+                <p className="font-bold text-3xl sm:text-4xl" style={{ color: '#ed4b9e' }}>{activeBet ? activeBet.amount : '0'}</p>
+                <p className="text-black text-[10px] sm:text-xs opacity-60">STRK</p>
               </div>
               <div className="text-right">
-                <p className="text-black text-xs sm:text-sm opacity-75 mb-1">Up</p>
-                <p className="font-bold text-3xl sm:text-4xl" style={{ color: '#2e8656' }}>2.5x</p>
+                <p className="text-black text-xs sm:text-sm opacity-75 mb-1">Multiplier</p>
+                <p className="font-bold text-3xl sm:text-4xl" style={{ color: '#2e8656' }}>{userMultiplier.toFixed(2)}x</p>
                 <p className="text-black text-[10px] sm:text-xs opacity-60">payout</p>
               </div>
             </div>

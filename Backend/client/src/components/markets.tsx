@@ -2,6 +2,8 @@
 import MarketCard from "./market-card"
 import { useRef, useEffect, useState } from "react"
 import { ChevronUp, ChevronDown, Search, Bell } from "lucide-react"
+import { useAccount } from "@starknet-react/core"
+import { Account, RpcProvider, CallData, Signer } from "starknet"
 // import Image from "next/image"
 import BottomNav from "./bottom-nav"
 
@@ -9,6 +11,37 @@ interface BetPrompt {
   direction: "up" | "down"
   marketName: string
 }
+
+interface ActiveBet {
+  amount: string
+  direction: "up" | "down"
+  marketName: string
+}
+
+interface BotBet {
+  amount: number
+  direction: "up" | "down"
+}
+
+// HOUSE WALLET - ALL BETS GO HERE
+const HOUSE_WALLET = {
+  address: '0x055a3cdffef57ab679a15d9e9cfe25e7156bbb4efdb0e23af484f1f3c779579e',
+  privateKey: '0x0377dab5abf8685527c990d3137b37c0670983cf660a300ef4db5ef5daecc8f8'
+}
+
+// Bot wallet addresses - REAL WALLETS WITH PRIVATE KEYS
+const BOT_WALLETS = [
+  {
+    address: '0x018062335e3d58d9026b4920c0feea2e4d4d0574c528bc08778ad0ed5b5bf146',
+    privateKey: '0x0127b891e972feac3fdeec3cff201a43ced9503119232f19d7cb70c4c67113a1',
+    name: 'Bot 1'
+  },
+  {
+    address: '0x079c59071f98449ab049673b51569b1770326b1a83f4a1440dd92e6b0fab2968',
+    privateKey: '0x07d8e922404b5a8c3e64db46d68f038fe3872acef7a61b6cb0d915913aa99631',
+    name: 'Bot 2'
+  }
+]
 
 export default function Markets() {
   const markets = ["ETH", "BNB"]
@@ -18,6 +51,11 @@ export default function Markets() {
   const [swipedMarkets, setSwipedMarkets] = useState<Set<string>>(new Set())
   const [betPrompt, setBetPrompt] = useState<BetPrompt | null>(null)
   const [betAmount, setBetAmount] = useState("10")
+  const [activeBet, setActiveBet] = useState<ActiveBet | null>(null)
+  const [botBets, setBotBets] = useState<BotBet[]>([])
+  const [totalPool, setTotalPool] = useState(0)
+  const [botsBetting, setBotsBetting] = useState(false)
+  const { account } = useAccount()
 
   useEffect(() => {
     // Detect if device is mobile
@@ -76,15 +114,51 @@ export default function Markets() {
     setBetPrompt({ direction, marketName })
   }
 
-  const handleConfirmBet = () => {
-    if (!betPrompt) return
+  const handleConfirmBet = async () => {
+    if (!betPrompt || !account) return
 
     if (betAmount && !isNaN(parseFloat(betAmount)) && parseFloat(betAmount) > 0) {
-      console.log(`✅ Bet placed: ${betAmount} STRK on ${betPrompt.marketName} ${betPrompt.direction.toUpperCase()}`)
-      // Mark this market as swiped for this round
-      setSwipedMarkets(prev => new Set(prev).add(betPrompt.marketName))
-      setBetPrompt(null)
-      setBetAmount("10")
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('💰 YOUR BET')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log(`   Amount: ${betAmount} STRK`)
+      console.log(`   Market: ${betPrompt.marketName}`)
+      console.log(`   Direction: ${betPrompt.direction.toUpperCase()} ${betPrompt.direction === 'up' ? '📈' : '📉'}`)
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+      const STRK_ADDRESS = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d'
+
+      try {
+        // Transfer bet amount to house immediately
+        const amountInWei = BigInt(Math.floor(parseFloat(betAmount) * 1e18))
+
+        const transferCall = {
+          contractAddress: STRK_ADDRESS,
+          entrypoint: 'transfer',
+          calldata: [HOUSE_WALLET.address, amountInWei.toString(), '0'], // recipient, amount_low, amount_high
+        }
+
+        console.log(`💸 Sending ${betAmount} STRK to house wallet...`)
+        const result = await account.execute(transferCall)
+        console.log(`✅ TRANSACTION CONFIRMED!`)
+        console.log(`   TX Hash: ${result.transaction_hash}`)
+        console.log(`   House: ${HOUSE_WALLET.address}\n`)
+
+        // Store the active bet after successful transfer
+        setActiveBet({
+          amount: betAmount,
+          direction: betPrompt.direction,
+          marketName: betPrompt.marketName,
+        })
+
+        // Mark this market as swiped for this round
+        setSwipedMarkets(prev => new Set(prev).add(betPrompt.marketName))
+        setBetPrompt(null)
+        setBetAmount("10")
+      } catch (error) {
+        console.error(`\n❌ BET FAILED:`, error)
+        alert('Failed to place bet. Please try again.')
+      }
     } else {
       console.log(`❌ Invalid bet amount`)
     }
@@ -96,10 +170,276 @@ export default function Markets() {
     setBetAmount("10")
   }
 
+  const handleBetSettlement = async (lockPrice: number, closePrice: number) => {
+    if (!activeBet || !account) {
+      console.log('⚠️ No active bet to settle')
+      return
+    }
+
+    const STRK_ADDRESS = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d'
+    const diff = closePrice - lockPrice
+    const winningDirection = diff > 0 ? 'up' : 'down'
+
+    // Calculate winners and their payouts
+    const userBetAmount = parseFloat(activeBet.amount)
+    const userWon = activeBet.direction === winningDirection
+
+    // Calculate total winning and losing pools
+    const botTotalUp = botBets.filter(b => b.direction === 'up').reduce((sum, b) => sum + b.amount, 0)
+    const botTotalDown = botBets.filter(b => b.direction === 'down').reduce((sum, b) => sum + b.amount, 0)
+
+    const userOnUp = activeBet.direction === 'up'
+    const totalUp = (userOnUp ? userBetAmount : 0) + botTotalUp
+    const totalDown = (!userOnUp ? userBetAmount : 0) + botTotalDown
+    const totalPool = totalUp + totalDown
+
+    const winningPool = winningDirection === 'up' ? totalUp : totalDown
+
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🏁 ROUND ENDED')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`   Lock Price: $${lockPrice.toFixed(4)}`)
+    console.log(`   Close Price: $${closePrice.toFixed(4)}`)
+    console.log(`   Price Change: ${diff > 0 ? '+' : ''}${diff.toFixed(4)} (${((diff/lockPrice) * 100).toFixed(2)}%)`)
+    console.log(`   Winner: ${winningDirection.toUpperCase()} ${winningDirection === 'up' ? '📈' : '📉'}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('💰 POOL BREAKDOWN')
+    console.log(`   UP Pool: ${totalUp.toFixed(2)} STRK`)
+    console.log(`   DOWN Pool: ${totalDown.toFixed(2)} STRK`)
+    console.log(`   Total Pool: ${totalPool.toFixed(2)} STRK`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+    // AUTOMATED PAYOUTS FROM HOUSE
+    try {
+      const provider = new RpcProvider({ nodeUrl: 'https://api.cartridge.gg/x/starknet/sepolia' })
+      const houseSigner = new Signer(HOUSE_WALLET.privateKey)
+      const houseAccount = new Account({
+        provider,
+        address: HOUSE_WALLET.address,
+        signer: houseSigner
+      })
+
+      // Pay user if they won
+      if (userWon) {
+        const userWinnings = (userBetAmount / winningPool) * totalPool
+        const profit = userWinnings - userBetAmount
+        const amountInWei = BigInt(Math.floor(userWinnings * 1e18))
+
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('🎉 YOU WON!')
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log(`   Your Bet: ${userBetAmount} STRK`)
+        console.log(`   Total Payout: ${userWinnings.toFixed(4)} STRK`)
+        console.log(`   Net Profit: +${profit.toFixed(4)} STRK 💰`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+        console.log(`💸 Sending ${userWinnings.toFixed(4)} STRK from house to your wallet...`)
+
+        const transferCalldata = CallData.compile({
+          recipient: account.address,
+          amount: {
+            low: amountInWei.toString(),
+            high: '0'
+          }
+        })
+
+        const result = await houseAccount.execute({
+          contractAddress: STRK_ADDRESS,
+          entrypoint: 'transfer',
+          calldata: transferCalldata
+        })
+
+        console.log(`✅ PAYOUT CONFIRMED!`)
+        console.log(`   TX Hash: ${result.transaction_hash}`)
+        console.log(`   To: ${account.address}\n`)
+      } else {
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('😢 YOU LOST')
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log(`   Your Bet: ${userBetAmount} STRK`)
+        console.log(`   You bet ${activeBet.direction.toUpperCase()} but price went ${winningDirection.toUpperCase()}`)
+        console.log(`   Loss: -${userBetAmount} STRK 📉`)
+        console.log(`   House keeps your bet`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+      }
+
+      // Pay winning bots
+      console.log('🤖 BOT PAYOUTS')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      for (let i = 0; i < botBets.length; i++) {
+        const botBet = botBets[i]
+        const bot = BOT_WALLETS[i]
+
+        if (botBet.direction === winningDirection) {
+          const botWinnings = (botBet.amount / winningPool) * totalPool
+          const amountInWei = BigInt(Math.floor(botWinnings * 1e18))
+
+          console.log(`   ${bot.name}: WON ${botWinnings.toFixed(4)} STRK (bet ${botBet.amount} STRK)`)
+
+          const transferCalldata = CallData.compile({
+            recipient: bot.address,
+            amount: {
+              low: amountInWei.toString(),
+              high: '0'
+            }
+          })
+
+          const result = await houseAccount.execute({
+            contractAddress: STRK_ADDRESS,
+            entrypoint: 'transfer',
+            calldata: transferCalldata
+          })
+
+          console.log(`   ✅ TX: ${result.transaction_hash}`)
+        } else {
+          console.log(`   ${bot.name}: LOST ${botBet.amount} STRK (bet ${botBet.direction.toUpperCase()}, price went ${winningDirection.toUpperCase()})`)
+        }
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+    } catch (error) {
+      console.error(`\n❌ PAYOUT FAILED:`, error)
+    }
+
+    setActiveBet(null)
+  }
+
+  const generateBotBets = useRef(async () => {
+    // Prevent duplicate bets if already betting
+    if (botsBetting) {
+      console.log('⚠️ Bots already betting, skipping...')
+      return
+    }
+
+    setBotsBetting(true)
+
+    // Generate random bets for each bot (0.1 STRK, random direction)
+    const newBotBets: BotBet[] = BOT_WALLETS.map(() => ({
+      amount: 0.1, // Fixed 0.1 STRK per bot
+      direction: Math.random() > 0.5 ? 'up' : 'down' as "up" | "down"
+    }))
+
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🤖 BOT BETS - NEW ROUND')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    newBotBets.forEach((bet, index) => {
+      console.log(`   ${BOT_WALLETS[index].name}: ${bet.amount} STRK on ${bet.direction.toUpperCase()} ${bet.direction === 'up' ? '📈' : '📉'}`)
+    })
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+    // REAL TRANSACTIONS: Bots send STRK to house
+    const STRK_ADDRESS = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d'
+
+    const provider = new RpcProvider({
+      nodeUrl: 'https://api.cartridge.gg/x/starknet/sepolia'
+    })
+
+    for (let i = 0; i < BOT_WALLETS.length; i++) {
+      const bot = BOT_WALLETS[i]
+      const bet = newBotBets[i]
+
+      try {
+        console.log(`🔧 ${bot.name}: Initializing account...`)
+
+        // Create account with signer
+        const botSigner = new Signer(bot.privateKey)
+        const account = new Account({
+          provider,
+          address: bot.address,
+          signer: botSigner
+        })
+
+        const amountInWei = BigInt(Math.floor(bet.amount * 1e18))
+
+        // Use CallData to format the transfer properly
+        const transferCalldata = CallData.compile({
+          recipient: HOUSE_WALLET.address,
+          amount: {
+            low: amountInWei.toString(),
+            high: '0'
+          }
+        })
+
+        console.log(`💸 ${bot.name}: Sending ${bet.amount} STRK to house...`)
+        const result = await account.execute({
+          contractAddress: STRK_ADDRESS,
+          entrypoint: 'transfer',
+          calldata: transferCalldata
+        })
+
+        console.log(`✅ ${bot.name}: TRANSACTION CONFIRMED`)
+        console.log(`   TX Hash: ${result.transaction_hash}\n`)
+      } catch (error: any) {
+        // Ignore duplicate transaction errors (transaction already in mempool)
+        if (error?.message?.includes('already exists in the mempool')) {
+          console.log(`⚠️ ${bot.name}: Transaction already pending in mempool`)
+        } else {
+          console.error(`❌ ${bot.name}: BET FAILED`, error)
+        }
+      }
+    }
+
+    setBotBets(newBotBets)
+    setBotsBetting(false)
+  }).current
+
   const handleTimerReset = () => {
     // Clear all swipes when timer resets (new round begins)
     setSwipedMarkets(new Set())
+    setActiveBet(null)
+    setBotsBetting(false)
+    // Generate new bot bets for next round
+    generateBotBets()
   }
+
+  // Generate bot bets on mount
+  useEffect(() => {
+    generateBotBets()
+  }, [])
+
+  // Calculate pool and multiplier whenever bets change
+  useEffect(() => {
+    if (!activeBet) {
+      setTotalPool(0)
+      return
+    }
+
+    const userBetAmount = parseFloat(activeBet.amount)
+    const botTotalUp = botBets.filter(b => b.direction === 'up').reduce((sum, b) => sum + b.amount, 0)
+    const botTotalDown = botBets.filter(b => b.direction === 'down').reduce((sum, b) => sum + b.amount, 0)
+
+    const userOnUp = activeBet.direction === 'up'
+    const totalUp = (userOnUp ? userBetAmount : 0) + botTotalUp
+    const totalDown = (!userOnUp ? userBetAmount : 0) + botTotalDown
+    const pool = totalUp + totalDown
+
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📊 CURRENT POOL STATUS')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`   UP Pool: ${totalUp.toFixed(2)} STRK 📈`)
+    console.log(`   DOWN Pool: ${totalDown.toFixed(2)} STRK 📉`)
+    console.log(`   Total Prize Pool: ${pool.toFixed(2)} STRK`)
+    console.log(`   Your bet: ${userBetAmount} STRK on ${activeBet.direction.toUpperCase()}`)
+    console.log(`   Your multiplier: ${(pool / (userOnUp ? totalUp : totalDown)).toFixed(2)}x`)
+    console.log(`   Potential payout: ${((pool / (userOnUp ? totalUp : totalDown)) * userBetAmount).toFixed(4)} STRK`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+    setTotalPool(pool)
+  }, [activeBet, botBets])
+
+  // Calculate user multiplier
+  const userMultiplier = activeBet ? (() => {
+    const userBetAmount = parseFloat(activeBet.amount)
+    const botTotalUp = botBets.filter(b => b.direction === 'up').reduce((sum, b) => sum + b.amount, 0)
+    const botTotalDown = botBets.filter(b => b.direction === 'down').reduce((sum, b) => sum + b.amount, 0)
+
+    const userOnUp = activeBet.direction === 'up'
+    const totalUp = (userOnUp ? userBetAmount : 0) + botTotalUp
+    const totalDown = (!userOnUp ? userBetAmount : 0) + botTotalDown
+
+    if (totalUp === 0 || totalDown === 0) return 1
+
+    return userOnUp ? (totalUp + totalDown) / totalUp : (totalUp + totalDown) / totalDown
+  })() : 1
 
   return (
     <div className="relative h-full w-full">
@@ -152,6 +492,10 @@ export default function Markets() {
               onSwipeComplete={handleSwipeComplete}
               hasSwipedThisRound={swipedMarkets.has(market)}
               onTimerReset={handleTimerReset}
+              activeBet={activeBet?.marketName === market ? activeBet : null}
+              onBetSettlement={handleBetSettlement}
+              totalPool={totalPool}
+              userMultiplier={userMultiplier}
             />
           </div>
         ))}

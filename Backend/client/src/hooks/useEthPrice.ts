@@ -12,14 +12,7 @@ export function useEthPrice() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    let fetchCount = 0
-
     const fetchPrice = async () => {
-      fetchCount++
-      const fetchTime = new Date().toLocaleTimeString()
-
-      console.log(`\n[${fetchTime}] 🔄 Fetching ETH price from Pyth Hermes (attempt #${fetchCount})...`)
-
       try {
         const response = await fetch(`${PYTH_HERMES_API}?ids[]=${ETH_USD_PRICE_ID}`)
 
@@ -35,28 +28,13 @@ export function useEthPrice() {
 
         const priceData = data.parsed[0].price
 
-        console.log('=== PYTH HERMES ETH/USD PRICE ===')
-        console.log('Fetch Time:', fetchTime)
-        console.log('Price:', priceData.price)
-        console.log('Exponent:', priceData.expo)
-        console.log('Confidence:', priceData.conf)
-
-        const publishDate = new Date(priceData.publish_time * 1000)
-        const secondsAgo = Math.floor((Date.now() - publishDate.getTime()) / 1000)
-        console.log('Publish Time:', publishDate.toLocaleString())
-        console.log(`⏰ Price age: ${secondsAgo} seconds old`)
-
         // Calculate actual price: price * 10^expo
         const formattedPrice = parseFloat(priceData.price) * Math.pow(10, priceData.expo)
-
-        console.log(`💰 Final ETH Price: $${formattedPrice.toFixed(4)}`)
-        console.log('=================================\n')
 
         setPrice(formattedPrice)
         setIsLoading(false)
         setError(null)
       } catch (err) {
-        console.error(`❌ [${fetchTime}] Error fetching ETH price:`, err)
         setError('Failed to fetch price')
         setIsLoading(false)
       }
@@ -66,11 +44,9 @@ export function useEthPrice() {
     fetchPrice()
 
     // Update every 2 seconds for real-time updates
-    console.log('⚙️ Starting ETH price polling from Pyth Hermes (every 2 seconds)...')
     const interval = setInterval(fetchPrice, 2000)
 
     return () => {
-      console.log('⚙️ Stopping ETH price polling...')
       clearInterval(interval)
     }
   }, [])

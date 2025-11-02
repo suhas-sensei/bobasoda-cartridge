@@ -31,7 +31,6 @@ export default function EthPriceChart({ currentPrice, lockPrice }: EthPriceChart
     }
 
     setPriceHistory(initialData)
-    console.log('📈 Chart initialized with', initialData.length, 'data points')
   }, [currentPrice, priceHistory.length])
 
   // Update chart data when price changes
@@ -49,9 +48,6 @@ export default function EthPriceChart({ currentPrice, lockPrice }: EthPriceChart
     setPriceHistory((prev) => {
       // Keep last 60 data points (about 2 minutes at 2s intervals)
       const updated = [...prev, newDataPoint].slice(-60)
-
-      console.log(`📊 Chart updated: ${timeStr} - ETH: $${currentPrice.toFixed(2)} (${updated.length} points)`)
-
       return updated
     })
   }, [currentPrice, priceHistory.length])
