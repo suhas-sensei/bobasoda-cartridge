@@ -18,6 +18,10 @@ interface ActiveBet {
   marketName: string
 }
 
+interface MarketBets {
+  [marketName: string]: ActiveBet | null
+}
+
 interface BotBet {
   amount: number
   direction: "up" | "down"
@@ -51,9 +55,8 @@ export default function Markets() {
   const [swipedMarkets, setSwipedMarkets] = useState<Set<string>>(new Set())
   const [betPrompt, setBetPrompt] = useState<BetPrompt | null>(null)
   const [betAmount, setBetAmount] = useState("10")
-  const [activeBet, setActiveBet] = useState<ActiveBet | null>(null)
+  const [marketBets, setMarketBets] = useState<MarketBets>({})
   const [botBets, setBotBets] = useState<BotBet[]>([])
-  const [totalPool, setTotalPool] = useState(0)
   const [botsBetting, setBotsBetting] = useState(false)
   const { account } = useAccount()
 
@@ -144,12 +147,15 @@ export default function Markets() {
         console.log(`   TX Hash: ${result.transaction_hash}`)
         console.log(`   House: ${HOUSE_WALLET.address}\n`)
 
-        // Store the active bet after successful transfer
-        setActiveBet({
-          amount: betAmount,
-          direction: betPrompt.direction,
-          marketName: betPrompt.marketName,
-        })
+        // Store the active bet for this specific market
+        setMarketBets(prev => ({
+          ...prev,
+          [betPrompt.marketName]: {
+            amount: betAmount,
+            direction: betPrompt.direction,
+            marketName: betPrompt.marketName,
+          }
+        }))
 
         // Mark this market as swiped for this round
         setSwipedMarkets(prev => new Set(prev).add(betPrompt.marketName))
@@ -170,9 +176,11 @@ export default function Markets() {
     setBetAmount("10")
   }
 
-  const handleBetSettlement = async (lockPrice: number, closePrice: number) => {
+  const handleBetSettlement = async (marketName: string, lockPrice: number, closePrice: number) => {
+    const activeBet = marketBets[marketName]
+
     if (!activeBet || !account) {
-      console.log('⚠️ No active bet to settle')
+      console.log(`⚠️ No active bet on ${marketName} to settle`)
       return
     }
 
@@ -196,7 +204,7 @@ export default function Markets() {
     const winningPool = winningDirection === 'up' ? totalUp : totalDown
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🏁 ROUND ENDED')
+    console.log(`🏁 ${marketName}/USD ROUND ENDED`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(`   Lock Price: $${lockPrice.toFixed(4)}`)
     console.log(`   Close Price: $${closePrice.toFixed(4)}`)
@@ -300,7 +308,11 @@ export default function Markets() {
       console.error(`\n❌ PAYOUT FAILED:`, error)
     }
 
-    setActiveBet(null)
+    // Clear the bet for this specific market
+    setMarketBets(prev => ({
+      ...prev,
+      [marketName]: null
+    }))
   }
 
   const generateBotBets = useRef(async () => {
@@ -385,7 +397,8 @@ export default function Markets() {
   const handleTimerReset = () => {
     // Clear all swipes when timer resets (new round begins)
     setSwipedMarkets(new Set())
-    setActiveBet(null)
+    // Clear all market bets
+    setMarketBets({})
     setBotsBetting(false)
     // Generate new bot bets for next round
     generateBotBets()
@@ -396,11 +409,12 @@ export default function Markets() {
     generateBotBets()
   }, [])
 
-  // Calculate pool and multiplier whenever bets change
-  useEffect(() => {
+  // Calculate pool and multiplier for a specific market
+  const calculateMarketStats = (marketName: string) => {
+    const activeBet = marketBets[marketName]
+
     if (!activeBet) {
-      setTotalPool(0)
-      return
+      return { totalPool: 0, userMultiplier: 1 }
     }
 
     const userBetAmount = parseFloat(activeBet.amount)
@@ -410,36 +424,43 @@ export default function Markets() {
     const userOnUp = activeBet.direction === 'up'
     const totalUp = (userOnUp ? userBetAmount : 0) + botTotalUp
     const totalDown = (!userOnUp ? userBetAmount : 0) + botTotalDown
-    const pool = totalUp + totalDown
+    const totalPool = totalUp + totalDown
 
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('📊 CURRENT POOL STATUS')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log(`   UP Pool: ${totalUp.toFixed(2)} STRK 📈`)
-    console.log(`   DOWN Pool: ${totalDown.toFixed(2)} STRK 📉`)
-    console.log(`   Total Prize Pool: ${pool.toFixed(2)} STRK`)
-    console.log(`   Your bet: ${userBetAmount} STRK on ${activeBet.direction.toUpperCase()}`)
-    console.log(`   Your multiplier: ${(pool / (userOnUp ? totalUp : totalDown)).toFixed(2)}x`)
-    console.log(`   Potential payout: ${((pool / (userOnUp ? totalUp : totalDown)) * userBetAmount).toFixed(4)} STRK`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+    if (totalUp === 0 || totalDown === 0) {
+      return { totalPool, userMultiplier: 1 }
+    }
 
-    setTotalPool(pool)
-  }, [activeBet, botBets])
+    const userMultiplier = userOnUp ? totalPool / totalUp : totalPool / totalDown
 
-  // Calculate user multiplier
-  const userMultiplier = activeBet ? (() => {
-    const userBetAmount = parseFloat(activeBet.amount)
-    const botTotalUp = botBets.filter(b => b.direction === 'up').reduce((sum, b) => sum + b.amount, 0)
-    const botTotalDown = botBets.filter(b => b.direction === 'down').reduce((sum, b) => sum + b.amount, 0)
+    return { totalPool, userMultiplier }
+  }
 
-    const userOnUp = activeBet.direction === 'up'
-    const totalUp = (userOnUp ? userBetAmount : 0) + botTotalUp
-    const totalDown = (!userOnUp ? userBetAmount : 0) + botTotalDown
+  // Log pool status when bets change
+  useEffect(() => {
+    Object.keys(marketBets).forEach(marketName => {
+      const activeBet = marketBets[marketName]
+      if (activeBet) {
+        const { totalPool, userMultiplier } = calculateMarketStats(marketName)
+        const userBetAmount = parseFloat(activeBet.amount)
+        const botTotalUp = botBets.filter(b => b.direction === 'up').reduce((sum, b) => sum + b.amount, 0)
+        const botTotalDown = botBets.filter(b => b.direction === 'down').reduce((sum, b) => sum + b.amount, 0)
+        const userOnUp = activeBet.direction === 'up'
+        const totalUp = (userOnUp ? userBetAmount : 0) + botTotalUp
+        const totalDown = (!userOnUp ? userBetAmount : 0) + botTotalDown
 
-    if (totalUp === 0 || totalDown === 0) return 1
-
-    return userOnUp ? (totalUp + totalDown) / totalUp : (totalUp + totalDown) / totalDown
-  })() : 1
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log(`📊 ${marketName} POOL STATUS`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log(`   UP Pool: ${totalUp.toFixed(2)} STRK 📈`)
+        console.log(`   DOWN Pool: ${totalDown.toFixed(2)} STRK 📉`)
+        console.log(`   Total Prize Pool: ${totalPool.toFixed(2)} STRK`)
+        console.log(`   Your bet: ${userBetAmount} STRK on ${activeBet.direction.toUpperCase()}`)
+        console.log(`   Your multiplier: ${userMultiplier.toFixed(2)}x`)
+        console.log(`   Potential payout: ${(userMultiplier * userBetAmount).toFixed(4)} STRK`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+      }
+    })
+  }, [marketBets, botBets])
 
   return (
     <div className="relative h-full w-full">
@@ -478,27 +499,30 @@ export default function Markets() {
           scrollSnapStop: 'always',
         }}
       >
-        {markets.map((market) => (
-          <div
-            key={market}
-            className="h-full w-full snap-start snap-always flex-shrink-0"
-            style={{
-              scrollSnapAlign: 'start',
-              scrollSnapStop: 'always',
-            }}
-          >
-            <MarketCard
-              marketName={market}
-              onSwipeComplete={handleSwipeComplete}
-              hasSwipedThisRound={swipedMarkets.has(market)}
-              onTimerReset={handleTimerReset}
-              activeBet={activeBet?.marketName === market ? activeBet : null}
-              onBetSettlement={handleBetSettlement}
-              totalPool={totalPool}
-              userMultiplier={userMultiplier}
-            />
-          </div>
-        ))}
+        {markets.map((market) => {
+          const { totalPool, userMultiplier } = calculateMarketStats(market)
+          return (
+            <div
+              key={market}
+              className="h-full w-full snap-start snap-always flex-shrink-0"
+              style={{
+                scrollSnapAlign: 'start',
+                scrollSnapStop: 'always',
+              }}
+            >
+              <MarketCard
+                marketName={market}
+                onSwipeComplete={handleSwipeComplete}
+                hasSwipedThisRound={swipedMarkets.has(market)}
+                onTimerReset={handleTimerReset}
+                activeBet={marketBets[market]}
+                onBetSettlement={handleBetSettlement}
+                totalPool={totalPool}
+                userMultiplier={userMultiplier}
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* Desktop Navigation Arrows */}

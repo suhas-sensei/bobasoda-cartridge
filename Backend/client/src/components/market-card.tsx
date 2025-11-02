@@ -1,7 +1,9 @@
 import { ArrowUp, ArrowDown } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
 import { useEthPrice } from "../hooks/useEthPrice"
+import { useBnbPrice } from "../hooks/useBnbPrice"
 import EthPriceChart from "./eth-price-chart"
+import BnbPriceChart from "./bnb-price-chart"
 import { useDojoContext } from "../dojo/useDojoContext"
 
 interface ActiveBet {
@@ -16,14 +18,20 @@ interface MarketCardProps {
   hasSwipedThisRound: boolean
   onTimerReset: () => void
   activeBet: ActiveBet | null
-  onBetSettlement: (lockPrice: number, closePrice: number) => void
+  onBetSettlement: (marketName: string, lockPrice: number, closePrice: number) => void
   totalPool: number
   userMultiplier: number
 }
 
 export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisRound, onTimerReset, activeBet, onBetSettlement, totalPool, userMultiplier }: MarketCardProps) {
-  // Only fetch ETH price for ETH market
-  const { price: ethPrice, isLoading: isPriceLoading } = marketName === "ETH" ? useEthPrice() : { price: null, isLoading: false }
+  // Fetch price based on market type
+  const { price: ethPrice, isLoading: isEthLoading } = marketName === "ETH" ? useEthPrice() : { price: null, isLoading: false }
+  const { price: bnbPrice, isLoading: isBnbLoading } = marketName === "BNB" ? useBnbPrice() : { price: null, isLoading: false }
+
+  // Use appropriate price and loading state
+  const currentPrice = marketName === "ETH" ? ethPrice : bnbPrice
+  const isPriceLoading = marketName === "ETH" ? isEthLoading : isBnbLoading
+
   // Get Dojo contract actions
   const { actions, account } = useDojoContext()
   // Hardcoded round configuration (60 second rounds)
@@ -76,13 +84,13 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
       }
 
       // Capture lock price at 50% (30s mark) - this is what determines winners
-      if (progress >= 50 && !hasLockedPrice && marketName === "ETH" && ethPrice !== null) {
-        setLockPrice(ethPrice)
+      if (progress >= 50 && !hasLockedPrice && currentPrice !== null) {
+        setLockPrice(currentPrice)
         setHasLockedPrice(true)
         console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         console.log('🔒 LOCK PRICE CAPTURED')
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-        console.log(`   Lock Price: $${ethPrice.toFixed(4)}`)
+        console.log(`   ${marketName}/USD Lock Price: $${currentPrice.toFixed(4)}`)
         console.log(`   Time: 30 seconds (50% progress)`)
         console.log(`   🚫 Betting is now CLOSED`)
         console.log(`   ⏳ Waiting for close price at 60s...`)
@@ -104,14 +112,14 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
 
       // Reset for next round at 100%
       if (progress >= 100) {
-        if (lockPrice !== null && ethPrice !== null) {
-          const diff = ethPrice - lockPrice
+        if (lockPrice !== null && currentPrice !== null) {
+          const diff = currentPrice - lockPrice
           const winner = diff > 0 ? 'UP' : diff < 0 ? 'DOWN' : 'TIE'
 
           // Settle bet if there's an active bet for this market
           if (activeBet) {
             // Call settlement handler
-            onBetSettlement(lockPrice, ethPrice)
+            onBetSettlement(marketName, lockPrice, currentPrice)
           }
         }
         // Reset for next round
@@ -126,7 +134,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
     const interval = setInterval(updateTimer, 50) // Update every 50ms for smooth animation
 
     return () => clearInterval(interval)
-  }, [onTimerReset, intervalSeconds, bufferSeconds, ethPrice, marketName, hasLockedPrice, lockPrice, hasCalledStartGame, hasCalledEndGame, actions, account, activeBet, onBetSettlement])
+  }, [onTimerReset, intervalSeconds, bufferSeconds, currentPrice, marketName, hasLockedPrice, lockPrice, hasCalledStartGame, hasCalledEndGame, actions, account, activeBet, onBetSettlement])
 
   useEffect(() => {
     // Initialize audio on client side with mobile-friendly settings and volume boost
@@ -358,16 +366,12 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
         <div className="mb-4 sm:mb-6">
           <p className="text-black opacity-90 mb-1 sm:mb-2 text-3xl sm:text-4xl md:text-5xl">{marketName}/USD</p>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-black">
-            {marketName === "ETH" ? (
-              isPriceLoading ? (
-                <span className="opacity-50">Loading...</span>
-              ) : ethPrice !== null ? (
-                `$${ethPrice.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`
-              ) : (
-                <span className="opacity-50">--</span>
-              )
+            {isPriceLoading ? (
+              <span className="opacity-50">Loading...</span>
+            ) : currentPrice !== null ? (
+              `$${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             ) : (
-              <span className="opacity-50">Coming Soon</span>
+              <span className="opacity-50">--</span>
             )}
           </h2>
         </div>
@@ -379,6 +383,8 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
         <div className="flex-1 mb-4 sm:mb-6 relative">
           {marketName === "ETH" ? (
             <EthPriceChart currentPrice={ethPrice} lockPrice={lockPrice} />
+          ) : marketName === "BNB" ? (
+            <BnbPriceChart currentPrice={bnbPrice} lockPrice={lockPrice} />
           ) : (
             <>
               <div className="absolute inset-0 flex items-end justify-center gap-0.5">
