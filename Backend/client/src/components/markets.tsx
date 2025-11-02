@@ -5,12 +5,19 @@ import { ChevronUp, ChevronDown, Search, Bell } from "lucide-react"
 // import Image from "next/image"
 import BottomNav from "./bottom-nav"
 
+interface BetPrompt {
+  direction: "up" | "down"
+  marketName: string
+}
+
 export default function Markets() {
   const markets = ["ETH", "BNB"]
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [swipedMarkets, setSwipedMarkets] = useState<Set<string>>(new Set())
+  const [betPrompt, setBetPrompt] = useState<BetPrompt | null>(null)
+  const [betAmount, setBetAmount] = useState("10")
 
   useEffect(() => {
     // Detect if device is mobile
@@ -65,8 +72,28 @@ export default function Markets() {
 
   const handleSwipeComplete = (direction: "up" | "down", marketName: string) => {
     console.log(`Swiped ${direction.toUpperCase()} on ${marketName}`)
-    // Mark this market as swiped for this round
-    setSwipedMarkets(prev => new Set(prev).add(marketName))
+    // Show bet prompt modal
+    setBetPrompt({ direction, marketName })
+  }
+
+  const handleConfirmBet = () => {
+    if (!betPrompt) return
+
+    if (betAmount && !isNaN(parseFloat(betAmount)) && parseFloat(betAmount) > 0) {
+      console.log(`✅ Bet placed: ${betAmount} STRK on ${betPrompt.marketName} ${betPrompt.direction.toUpperCase()}`)
+      // Mark this market as swiped for this round
+      setSwipedMarkets(prev => new Set(prev).add(betPrompt.marketName))
+      setBetPrompt(null)
+      setBetAmount("10")
+    } else {
+      console.log(`❌ Invalid bet amount`)
+    }
+  }
+
+  const handleCancelBet = () => {
+    console.log(`❌ Bet cancelled`)
+    setBetPrompt(null)
+    setBetAmount("10")
   }
 
   const handleTimerReset = () => {
@@ -153,6 +180,51 @@ export default function Markets() {
             </button>
           )}
         </>
+      )}
+
+      {/* Bet Amount Modal */}
+      {betPrompt && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="bg-yellow-400 rounded-2xl p-6 mx-4 w-full max-w-sm border-2 border-yellow-500 shadow-xl">
+            <h3 className="text-black font-bold text-2xl mb-4 text-center">
+              Enter Bet Amount
+            </h3>
+
+            <div className="mb-4">
+              <p className="text-black text-sm mb-2 opacity-75">
+                {betPrompt.marketName} - {betPrompt.direction === "up" ? "UP ↑" : "DOWN ↓"}
+              </p>
+              <div className="flex items-center gap-2 bg-white rounded-xl p-3">
+                <input
+                  type="number"
+                  value={betAmount}
+                  onChange={(e) => setBetAmount(e.target.value)}
+                  className="flex-1 bg-transparent text-black text-2xl font-bold outline-none"
+                  placeholder="10"
+                  min="0"
+                  step="0.01"
+                  autoFocus
+                />
+                <span className="text-black font-bold text-xl">STRK</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelBet}
+                className="flex-1 bg-white text-black px-6 py-3 rounded-xl font-bold text-lg hover:bg-gray-100 transition border-2 border-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmBet}
+                className="flex-1 bg-black text-yellow-400 px-6 py-3 rounded-xl font-bold text-lg hover:bg-gray-800 transition"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Bottom Navigation */}

@@ -94,7 +94,7 @@ export default function Profile({
               BALANCE
             </p>
             <p className="text-yellow-400 text-3xl sm:text-4xl font-bold mb-2">
-              {isLoadingBalance ? "..." : balance} CELO
+              {isLoadingBalance ? "..." : balance} STRK
             </p>
           </div>
 

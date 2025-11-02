@@ -2,6 +2,7 @@ import { ArrowUp, ArrowDown } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
 import { useEthPrice } from "../hooks/useEthPrice"
 import EthPriceChart from "./eth-price-chart"
+import { useDojoContext } from "../dojo/useDojoContext"
 
 interface MarketCardProps {
   marketName: string
@@ -13,6 +14,8 @@ interface MarketCardProps {
 export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisRound, onTimerReset }: MarketCardProps) {
   // Only fetch ETH price for ETH market
   const { price: ethPrice, isLoading: isPriceLoading } = marketName === "ETH" ? useEthPrice() : { price: null, isLoading: false }
+  // Get Dojo contract actions
+  const { actions, account } = useDojoContext()
   // Hardcoded round configuration (60 second rounds)
   const intervalSeconds = 30 // 30 seconds per phase (betting + lock)
   const bufferSeconds = 0 // No buffer
@@ -25,6 +28,8 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
   const [timerProgress, setTimerProgress] = useState(0)
   const [lockPrice, setLockPrice] = useState<number | null>(null)
   const [hasLockedPrice, setHasLockedPrice] = useState(false)
+  const [hasCalledStartGame, setHasCalledStartGame] = useState(false)
+  const [hasCalledEndGame, setHasCalledEndGame] = useState(false)
   const dragStartX = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -41,12 +46,38 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
       const progress = Math.min((elapsed / ROUND_DURATION) * 100, 100)
       setTimerProgress(progress)
 
+      // Call start_game at 1 second
+      if (elapsed >= 1000 && !hasCalledStartGame && actions && account) {
+        setHasCalledStartGame(true)
+        console.log('🎮 Calling start_game at 1 second...')
+        actions.startGame(account)
+          .then(() => {
+            console.log('✅ start_game called successfully!')
+          })
+          .catch((error) => {
+            console.error('❌ Failed to call start_game:', error)
+          })
+      }
+
       // Capture lock price at 50% (30s mark) - this is what determines winners
       if (progress >= 50 && !hasLockedPrice && marketName === "ETH" && ethPrice !== null) {
         setLockPrice(ethPrice)
         setHasLockedPrice(true)
         console.log(`🔒 Lock Price captured at 50%: $${ethPrice.toFixed(4)}`)
         console.log(`   Users are betting: Will close price be higher or lower than $${ethPrice.toFixed(4)}?`)
+      }
+
+      // Call end_game at 59 seconds
+      if (elapsed >= 59000 && !hasCalledEndGame && actions && account) {
+        setHasCalledEndGame(true)
+        console.log('🏁 Calling end_game at 59 seconds...')
+        actions.endGame(account)
+          .then(() => {
+            console.log('✅ end_game called successfully!')
+          })
+          .catch((error) => {
+            console.error('❌ Failed to call end_game:', error)
+          })
       }
 
       // Reset for next round at 100%
@@ -60,6 +91,8 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
         // Reset for next round
         timerStartRef.current = Date.now()
         setHasLockedPrice(false)
+        setHasCalledStartGame(false)
+        setHasCalledEndGame(false)
         onTimerReset() // Clear swipe tracking for new round
       }
     }
@@ -67,7 +100,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
     const interval = setInterval(updateTimer, 50) // Update every 50ms for smooth animation
 
     return () => clearInterval(interval)
-  }, [onTimerReset, intervalSeconds, bufferSeconds, ethPrice, marketName, hasLockedPrice, lockPrice])
+  }, [onTimerReset, intervalSeconds, bufferSeconds, ethPrice, marketName, hasLockedPrice, lockPrice, hasCalledStartGame, hasCalledEndGame, actions, account])
 
   useEffect(() => {
     // Initialize audio on client side with mobile-friendly settings and volume boost
@@ -364,7 +397,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
           <div className="relative z-10">
             <div className="mb-4 sm:mb-5">
               <p className="text-black text-xs sm:text-sm opacity-75 mb-1">NEXT ROUND</p>
-              <p className="text-black font-bold text-2xl sm:text-3xl">147 CELO</p>
+              <p className="text-black font-bold text-2xl sm:text-3xl">147 STRK</p>
               <p className="text-black text-xs sm:text-sm opacity-60">PRIZE POOL</p>
             </div>
 
