@@ -6,6 +6,8 @@ import { useAccount } from "@starknet-react/core"
 import { Account, RpcProvider, CallData, Signer } from "starknet"
 // import Image from "next/image"
 import BottomNav from "./bottom-nav"
+import { addBetToHistory } from "../utils/betHistory"
+import { roundManager } from "../services/roundManager"
 
 interface BetPrompt {
   direction: "up" | "down"
@@ -148,14 +150,18 @@ export default function Markets() {
         console.log(`   House: ${HOUSE_WALLET.address}\n`)
 
         // Store the active bet for this specific market
+        const newBet = {
+          amount: betAmount,
+          direction: betPrompt.direction,
+          marketName: betPrompt.marketName,
+        }
         setMarketBets(prev => ({
           ...prev,
-          [betPrompt.marketName]: {
-            amount: betAmount,
-            direction: betPrompt.direction,
-            marketName: betPrompt.marketName,
-          }
+          [betPrompt.marketName]: newBet
         }))
+
+        // Notify round manager about the bet
+        roundManager.setBet(betPrompt.marketName, newBet)
 
         // Mark this market as swiped for this round
         setSwipedMarkets(prev => new Set(prev).add(betPrompt.marketName))
@@ -231,6 +237,17 @@ export default function Markets() {
       let currentNonce = await houseAccount.getNonce()
       console.log(`🔧 House account starting nonce: ${currentNonce}\n`)
 
+      // Add small delay based on market to avoid nonce collisions when multiple markets settle simultaneously
+      const marketDelays: Record<string, number> = { 'ETH': 0, 'BNB': 500, 'STRK': 1000 }
+      const delay = marketDelays[marketName] || 0
+      if (delay > 0) {
+        console.log(`⏱️ Waiting ${delay}ms to avoid nonce collision...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        // Re-fetch nonce after delay to get updated value
+        currentNonce = await houseAccount.getNonce()
+        console.log(`🔧 Updated nonce after delay: ${currentNonce}\n`)
+      }
+
       // Pay user if they won
       if (userWon) {
         const userWinnings = (userBetAmount / winningPool) * totalPool
@@ -269,8 +286,27 @@ export default function Markets() {
         console.log(`   To: ${account.address}`)
         console.log(`   Nonce used: ${currentNonce}\n`)
 
-        // Increment nonce for next transaction
-        currentNonce = (BigInt(currentNonce) + 1n).toString()
+        // Save to history
+        const historyEntry = {
+          id: `${Date.now()}-${marketName}-${Math.random()}`,
+          marketName,
+          timestamp: Date.now(),
+          betAmount: userBetAmount,
+          direction: activeBet.direction,
+          lockPrice,
+          closePrice,
+          priceChange: diff,
+          priceChangePercent: (diff / lockPrice) * 100,
+          result: 'win' as const,
+          payout: userWinnings,
+          profit,
+          txHash: result.transaction_hash
+        }
+        console.log('💾 Saving win to history:', historyEntry)
+        addBetToHistory(historyEntry)
+
+        // Increment nonce for next transaction (convert back to hex format)
+        currentNonce = "0x" + (BigInt(currentNonce) + 1n).toString(16)
       } else {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         console.log('😢 YOU LOST')
@@ -280,6 +316,24 @@ export default function Markets() {
         console.log(`   Loss: -${userBetAmount} STRK 📉`)
         console.log(`   House keeps your bet`)
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+
+        // Save to history
+        const historyEntry = {
+          id: `${Date.now()}-${marketName}-${Math.random()}`,
+          marketName,
+          timestamp: Date.now(),
+          betAmount: userBetAmount,
+          direction: activeBet.direction,
+          lockPrice,
+          closePrice,
+          priceChange: diff,
+          priceChangePercent: (diff / lockPrice) * 100,
+          result: 'loss' as const,
+          payout: 0,
+          profit: -userBetAmount
+        }
+        console.log('💾 Saving loss to history:', historyEntry)
+        addBetToHistory(historyEntry)
       }
 
       // Pay winning bots
@@ -314,8 +368,8 @@ export default function Markets() {
 
           console.log(`   ✅ TX: ${result.transaction_hash} (nonce: ${currentNonce})`)
 
-          // Increment nonce for next transaction
-          currentNonce = (BigInt(currentNonce) + 1n).toString()
+          // Increment nonce for next transaction (convert back to hex format)
+          currentNonce = "0x" + (BigInt(currentNonce) + 1n).toString(16)
         } else {
           console.log(`   ${bot.name}: LOST ${botBet.amount} STRK (bet ${botBet.direction.toUpperCase()}, price went ${winningDirection.toUpperCase()})`)
         }
@@ -408,6 +462,8 @@ export default function Markets() {
     }
 
     setBotBets(newBotBets)
+    // Notify round manager about bot bets
+    roundManager.setBotBets(newBotBets)
     setBotsBetting(false)
   }).current
 

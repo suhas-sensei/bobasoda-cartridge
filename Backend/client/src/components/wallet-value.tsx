@@ -129,6 +129,10 @@ export default function WalletValue() {
               onSwipeComplete={handleSwipeComplete}
               hasSwipedThisRound={swipedMarkets.has(market)}
               onTimerReset={handleTimerReset}
+              activeBet={null}
+              onBetSettlement={() => {}}
+              totalPool={0}
+              userMultiplier={1}
             />
           </div>
         ))}

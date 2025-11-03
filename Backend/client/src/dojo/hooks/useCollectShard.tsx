@@ -5,7 +5,6 @@ import { useDojoSDK } from "@dojoengine/sdk/react";
 import { useStarknetConnect } from "./useStarknetConnect";
 import useAppStore, { GamePhase } from "../../zustand/store";
 import { useGameData } from "./useGameData";
-import * as models from "../../dojo/models.gen";
 
 interface CollectShardState {
   isLoading: boolean;
@@ -82,7 +81,7 @@ export const useCollectShard = () => {
 
     // Validate shard exists in current room and is not collected
     const shardsInRoom = getShardsInCurrentRoom();
-    const shard = shardsInRoom.find(s => s.shard_id.toString() === shardId);
+    const shard = shardsInRoom.find((s: any) => s.shard_id.toString() === shardId);
     
     if (!shard) {
       const error = "Shard not found in current room";
@@ -175,8 +174,8 @@ export const useCollectShard = () => {
     }
 
     const shardsInRoom = getShardsInCurrentRoom();
-    const shard = shardsInRoom.find(s => s.shard_id.toString() === shardId);
-    
+    const shard = shardsInRoom.find((s: any) => s.shard_id.toString() === shardId);
+
     return shard !== undefined && !shard.collected && !actionInProgress;
   }, [player, currentRoom, gamePhase, getShardsInCurrentRoom, actionInProgress]);
 

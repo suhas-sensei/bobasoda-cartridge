@@ -33,7 +33,6 @@ export const useOpenDoor = () => {
     gamePhase,
     player,
     currentRoom,
-    canMove,
   } = useAppStore();
 
   const [state, setState] = useState<OpenDoorState>({

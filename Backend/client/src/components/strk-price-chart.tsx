@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react'
-import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip, ReferenceLine } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, YAxis, ReferenceLine } from 'recharts'
 
 interface StrkPriceChartProps {
   currentPrice: number | null

@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { useAccount, useConnect, useDisconnect, useBalance } from "@starknet-react/core"
 import Profile from "./profile"
 import BottomNav from "./bottom-nav"
 import { useWalletInitialize } from "../hooks/useWalletInitialize"
 
 export default function ProfilePage() {
-  const { address, status, account } = useAccount()
+  const { address, status } = useAccount()
   const { connect, connectors } = useConnect()
   const { disconnect } = useDisconnect()
   const { isInitialized, isInitializing } = useWalletInitialize()

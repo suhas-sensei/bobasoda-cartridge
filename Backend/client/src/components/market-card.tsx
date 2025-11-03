@@ -7,6 +7,7 @@ import EthPriceChart from "./eth-price-chart"
 import BnbPriceChart from "./bnb-price-chart"
 import StrkPriceChart from "./strk-price-chart"
 import { useDojoContext } from "../dojo/useDojoContext"
+import { roundManager } from "../services/roundManager"
 
 interface ActiveBet {
   amount: string
@@ -40,7 +41,6 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
   // Hardcoded round configuration (60 second rounds)
   const intervalSeconds = 30 // 30 seconds per phase (betting + lock)
   const bufferSeconds = 0 // No buffer
-  const [selectedPeriod, setSelectedPeriod] = useState("1d")
   const [currentCardId, setCurrentCardId] = useState(1)
   const [dragOffset, setDragOffset] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -56,7 +56,39 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
   const audioContextRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
-  const timerStartRef = useRef<number>(Date.now())
+
+  // Initialize timer from localStorage to persist across tab changes
+  const getInitialTimerStart = () => {
+    const stored = localStorage.getItem('global_round_start')
+    if (stored) {
+      return parseInt(stored, 10)
+    }
+    const now = Date.now()
+    localStorage.setItem('global_round_start', now.toString())
+    return now
+  }
+
+  const timerStartRef = useRef<number>(getInitialTimerStart())
+
+  // Initialize states on mount based on current progress (in case returning mid-round)
+  useEffect(() => {
+    const ROUND_DURATION = (intervalSeconds * 2) * 1000
+    const currentElapsed = Date.now() - timerStartRef.current
+    const currentProgress = Math.min((currentElapsed / ROUND_DURATION) * 100, 100)
+
+    if (currentElapsed >= 1000) {
+      setHasCalledStartGame(true)
+    }
+    if (currentProgress >= 50) {
+      setHasLockedPrice(true)
+      if (currentPrice !== null) {
+        setLockPrice(currentPrice)
+      }
+    }
+    if (currentElapsed >= 59000) {
+      setHasCalledEndGame(true)
+    }
+  }, []) // Only run once on mount
 
   useEffect(() => {
     // 60 second rounds (30s betting + 30s lock)
@@ -116,9 +148,6 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
       // Reset for next round at 100%
       if (progress >= 100) {
         if (lockPrice !== null && currentPrice !== null) {
-          const diff = currentPrice - lockPrice
-          const winner = diff > 0 ? 'UP' : diff < 0 ? 'DOWN' : 'TIE'
-
           // Settle bet if there's an active bet for this market
           if (activeBet) {
             // Call settlement handler
@@ -126,7 +155,9 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
           }
         }
         // Reset for next round
-        timerStartRef.current = Date.now()
+        const newStartTime = Date.now()
+        timerStartRef.current = newStartTime
+        localStorage.setItem('global_round_start', newStartTime.toString())
         setHasLockedPrice(false)
         setHasCalledStartGame(false)
         setHasCalledEndGame(false)
@@ -138,6 +169,11 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
 
     return () => clearInterval(interval)
   }, [onTimerReset, intervalSeconds, bufferSeconds, currentPrice, marketName, hasLockedPrice, lockPrice, hasCalledStartGame, hasCalledEndGame, actions, account, activeBet, onBetSettlement])
+
+  // Send price updates to round manager (runs even when component unmounts/remounts)
+  useEffect(() => {
+    roundManager.updatePrice(marketName, currentPrice)
+  }, [currentPrice, marketName])
 
   useEffect(() => {
     // Initialize audio on client side with mobile-friendly settings and volume boost
@@ -184,8 +220,6 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
       document.addEventListener('click', unlockAudio, { once: true })
     }
   }, [])
-
-  const periods = ["1h", "8h", "1d", "1w", "1m", "6m", "1y"]
 
   const cards = [currentCardId, currentCardId + 1, currentCardId + 2]
 

@@ -13,8 +13,8 @@ export function useWalletInitialize() {
 
   useEffect(() => {
     async function initializePlayer() {
-      // Only initialize if wallet is connected, we have an account, and not already initialized/initializing
-      if (!address || !account || isInitialized || isInitializing) {
+      // Only initialize if wallet is connected, we have an account, actions available, and not already initialized/initializing
+      if (!address || !account || !actions || isInitialized || isInitializing) {
         return
       }
 

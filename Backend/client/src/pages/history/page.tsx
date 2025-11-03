@@ -1,6 +1,7 @@
 "use client"
 
 import BottomNav from "@/components/bottom-nav";
+import BetHistoryList from "@/components/bet-history-list";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 
 export default function History() {
@@ -23,14 +24,7 @@ export default function History() {
         }}
       >
         <div className="relative h-full w-full">
-          <div className="h-full w-full flex flex-col items-center justify-center p-8">
-            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-4">
-              Transaction History
-            </h1>
-            <p className="text-yellow-400 opacity-75 text-lg text-center">
-              Coming soon...
-            </p>
-          </div>
+          <BetHistoryList />
           <BottomNav />
         </div>
       </div>

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Vector3 } from 'three';
-import useAppStore, { GamePhase } from "../../zustand/store";
+import useAppStore from "../../zustand/store";
 import { useMovePlayer } from './useMovePlayer';
 
 interface UsePlayerMovementReturn {
@@ -11,8 +10,8 @@ interface UsePlayerMovementReturn {
 }
 
 export const usePlayerMovement = (): UsePlayerMovementReturn => {
-  const { position, updatePosition, player, gamePhase, raceStarted } = useAppStore();
-  const { movePlayer, isLoading, error } = useMovePlayer();
+  const { position, updatePosition, raceStarted } = useAppStore();
+  const { movePlayer, isLoading } = useMovePlayer();
 
 
   const lastVerifiedPosition = useRef<{ x: number; z: number }>({ x: 400, z: 400 });

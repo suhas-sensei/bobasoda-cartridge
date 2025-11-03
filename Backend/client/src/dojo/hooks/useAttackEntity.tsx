@@ -101,7 +101,7 @@ export const useAttackEntity = () => {
     }
 
     const entitiesInRoom = getEntitiesInCurrentRoom();
-    const isEntityInRoom = entitiesInRoom.some(e => e.entity_id.toString() === entityId);
+    const isEntityInRoom = entitiesInRoom.some((e: any) => e.entity_id.toString() === entityId);
     if (!isEntityInRoom) {
       const error = "Entity is not in current room";
       setState(prev => ({ ...prev, error }));
