@@ -227,6 +227,10 @@ export default function Markets() {
         signer: houseSigner
       })
 
+      // Get current nonce from the house account
+      let currentNonce = await houseAccount.getNonce()
+      console.log(`🔧 House account starting nonce: ${currentNonce}\n`)
+
       // Pay user if they won
       if (userWon) {
         const userWinnings = (userBetAmount / winningPool) * totalPool
@@ -251,15 +255,22 @@ export default function Markets() {
           }
         })
 
-        const result = await houseAccount.execute({
-          contractAddress: STRK_ADDRESS,
-          entrypoint: 'transfer',
-          calldata: transferCalldata
-        })
+        const result = await houseAccount.execute(
+          {
+            contractAddress: STRK_ADDRESS,
+            entrypoint: 'transfer',
+            calldata: transferCalldata
+          },
+          { nonce: currentNonce }
+        )
 
         console.log(`✅ PAYOUT CONFIRMED!`)
         console.log(`   TX Hash: ${result.transaction_hash}`)
-        console.log(`   To: ${account.address}\n`)
+        console.log(`   To: ${account.address}`)
+        console.log(`   Nonce used: ${currentNonce}\n`)
+
+        // Increment nonce for next transaction
+        currentNonce = (BigInt(currentNonce) + 1n).toString()
       } else {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         console.log('😢 YOU LOST')
@@ -292,13 +303,19 @@ export default function Markets() {
             }
           })
 
-          const result = await houseAccount.execute({
-            contractAddress: STRK_ADDRESS,
-            entrypoint: 'transfer',
-            calldata: transferCalldata
-          })
+          const result = await houseAccount.execute(
+            {
+              contractAddress: STRK_ADDRESS,
+              entrypoint: 'transfer',
+              calldata: transferCalldata
+            },
+            { nonce: currentNonce }
+          )
 
-          console.log(`   ✅ TX: ${result.transaction_hash}`)
+          console.log(`   ✅ TX: ${result.transaction_hash} (nonce: ${currentNonce})`)
+
+          // Increment nonce for next transaction
+          currentNonce = (BigInt(currentNonce) + 1n).toString()
         } else {
           console.log(`   ${bot.name}: LOST ${botBet.amount} STRK (bet ${botBet.direction.toUpperCase()}, price went ${winningDirection.toUpperCase()})`)
         }

@@ -1,5 +1,6 @@
 
 import { useState } from "react"
+import { Copy, Check } from "lucide-react"
 
 interface ProfileProps {
   onConnectWallet?: () => void
@@ -21,10 +22,23 @@ export default function Profile({
   isLoadingBalance = false
 }: ProfileProps = {}) {
   const [totalEarned] = useState("0.00")
+  const [isCopied, setIsCopied] = useState(false)
 
   const formatWalletAddress = (address: string) => {
     if (!address) return ""
     return `${address.slice(0, 4)}...${address.slice(-2)}`
+  }
+
+  const handleCopyAddress = async () => {
+    if (!walletAddress) return
+
+    try {
+      await navigator.clipboard.writeText(walletAddress)
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 2000) // Reset after 2 seconds
+    } catch (error) {
+      console.error('Failed to copy address:', error)
+    }
   }
 
   const handleConnect = () => {
@@ -83,9 +97,30 @@ export default function Profile({
             <p className="text-yellow-400 opacity-75 text-sm mb-3">
               WALLET ADDRESS
             </p>
-            <p className="text-yellow-400 text-xl sm:text-2xl font-bold mb-4">
-              {formatWalletAddress(walletAddress)}
-            </p>
+            <div className="flex items-center gap-3 group">
+              <p
+                onClick={handleCopyAddress}
+                className="text-yellow-400 text-xl sm:text-2xl font-bold cursor-pointer hover:opacity-80 transition"
+              >
+                {formatWalletAddress(walletAddress)}
+              </p>
+              <button
+                onClick={handleCopyAddress}
+                className="p-2 rounded-lg hover:bg-yellow-400/20 transition-all"
+                title={isCopied ? "Copied!" : "Copy address"}
+              >
+                {isCopied ? (
+                  <Check className="w-5 h-5 text-yellow-400" />
+                ) : (
+                  <Copy className="w-5 h-5 text-yellow-400 opacity-75 group-hover:opacity-100" />
+                )}
+              </button>
+            </div>
+            {isCopied && (
+              <p className="text-yellow-400 text-sm mt-2 animate-fade-in">
+                Address copied to clipboard!
+              </p>
+            )}
           </div>
 
           {/* Wallet Balance Section */}
