@@ -35,21 +35,24 @@ export default function BnbPriceChart({ currentPrice, lockPrice }: BnbPriceChart
 
   // Update chart data when price changes
   useEffect(() => {
-    if (!currentPrice || priceHistory.length === 0) return
-
-    const now = Date.now()
-
-    const newDataPoint: PriceDataPoint = {
-      time: now,
-      price: currentPrice,
-    }
+    if (!currentPrice) return
 
     setPriceHistory((prev) => {
+      // Don't add if history is empty (not initialized yet)
+      if (prev.length === 0) return prev
+
+      const now = Date.now()
+
+      const newDataPoint: PriceDataPoint = {
+        time: now,
+        price: currentPrice,
+      }
+
       // Keep last 60 data points (about 2 minutes at 2s intervals)
       const updated = [...prev, newDataPoint].slice(-60)
       return updated
     })
-  }, [currentPrice, priceHistory.length])
+  }, [currentPrice])
 
   if (priceHistory.length === 0) {
     return (
@@ -59,11 +62,15 @@ export default function BnbPriceChart({ currentPrice, lockPrice }: BnbPriceChart
     )
   }
 
+  // Calculate dynamic margin based on price range (0.5% of average price)
+  const avgPrice = currentPrice || 600
+  const margin = avgPrice * 0.005
+
   return (
     <div className="w-full h-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={priceHistory} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-          <YAxis domain={['dataMin - 2', 'dataMax + 2']} hide />
+          <YAxis domain={[(dataMin: number) => dataMin - margin, (dataMax: number) => dataMax + margin]} hide />
 
           {/* Reference line showing lock price (captured at 30s mark) */}
           {lockPrice !== null && (

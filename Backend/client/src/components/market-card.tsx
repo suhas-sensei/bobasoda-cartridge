@@ -2,8 +2,10 @@ import { ArrowUp, ArrowDown } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
 import { useEthPrice } from "../hooks/useEthPrice"
 import { useBnbPrice } from "../hooks/useBnbPrice"
+import { useStrkPrice } from "../hooks/useStrkPrice"
 import EthPriceChart from "./eth-price-chart"
 import BnbPriceChart from "./bnb-price-chart"
+import StrkPriceChart from "./strk-price-chart"
 import { useDojoContext } from "../dojo/useDojoContext"
 
 interface ActiveBet {
@@ -27,10 +29,11 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
   // Fetch price based on market type
   const { price: ethPrice, isLoading: isEthLoading } = marketName === "ETH" ? useEthPrice() : { price: null, isLoading: false }
   const { price: bnbPrice, isLoading: isBnbLoading } = marketName === "BNB" ? useBnbPrice() : { price: null, isLoading: false }
+  const { price: strkPrice, isLoading: isStrkLoading } = marketName === "STRK" ? useStrkPrice() : { price: null, isLoading: false }
 
   // Use appropriate price and loading state
-  const currentPrice = marketName === "ETH" ? ethPrice : bnbPrice
-  const isPriceLoading = marketName === "ETH" ? isEthLoading : isBnbLoading
+  const currentPrice = marketName === "ETH" ? ethPrice : marketName === "BNB" ? bnbPrice : strkPrice
+  const isPriceLoading = marketName === "ETH" ? isEthLoading : marketName === "BNB" ? isBnbLoading : isStrkLoading
 
   // Get Dojo contract actions
   const { actions, account } = useDojoContext()
@@ -90,7 +93,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
         console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         console.log('🔒 LOCK PRICE CAPTURED')
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-        console.log(`   ${marketName}/USD Lock Price: $${currentPrice.toFixed(4)}`)
+        console.log(`   ${marketName}/USD Lock Price: $${currentPrice.toFixed(5)}`)
         console.log(`   Time: 30 seconds (50% progress)`)
         console.log(`   🚫 Betting is now CLOSED`)
         console.log(`   ⏳ Waiting for close price at 60s...`)
@@ -369,7 +372,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
             {isPriceLoading ? (
               <span className="opacity-50">Loading...</span>
             ) : currentPrice !== null ? (
-              `$${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              `$${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 5, maximumFractionDigits: 5 })}`
             ) : (
               <span className="opacity-50">--</span>
             )}
@@ -385,6 +388,8 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
             <EthPriceChart currentPrice={ethPrice} lockPrice={lockPrice} />
           ) : marketName === "BNB" ? (
             <BnbPriceChart currentPrice={bnbPrice} lockPrice={lockPrice} />
+          ) : marketName === "STRK" ? (
+            <StrkPriceChart currentPrice={strkPrice} lockPrice={lockPrice} />
           ) : (
             <>
               <div className="absolute inset-0 flex items-end justify-center gap-0.5">

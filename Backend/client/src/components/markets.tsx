@@ -48,7 +48,7 @@ const BOT_WALLETS = [
 ]
 
 export default function Markets() {
-  const markets = ["ETH", "BNB"]
+  const markets = ["ETH", "BNB", "STRK"]
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -206,9 +206,9 @@ export default function Markets() {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(`🏁 ${marketName}/USD ROUND ENDED`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log(`   Lock Price: $${lockPrice.toFixed(4)}`)
-    console.log(`   Close Price: $${closePrice.toFixed(4)}`)
-    console.log(`   Price Change: ${diff > 0 ? '+' : ''}${diff.toFixed(4)} (${((diff/lockPrice) * 100).toFixed(2)}%)`)
+    console.log(`   Lock Price: $${lockPrice.toFixed(5)}`)
+    console.log(`   Close Price: $${closePrice.toFixed(5)}`)
+    console.log(`   Price Change: ${diff > 0 ? '+' : ''}${diff.toFixed(5)} (${((diff/lockPrice) * 100).toFixed(2)}%)`)
     console.log(`   Winner: ${winningDirection.toUpperCase()} ${winningDirection === 'up' ? '📈' : '📉'}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('💰 POOL BREAKDOWN')
