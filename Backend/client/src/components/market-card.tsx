@@ -147,13 +147,13 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
 
       // Reset for next round at 100%
       if (progress >= 100) {
-        if (lockPrice !== null && currentPrice !== null) {
-          // Settle bet if there's an active bet for this market
-          if (activeBet) {
-            // Call settlement handler
-            onBetSettlement(marketName, lockPrice, currentPrice)
-          }
-        }
+        // Settlement is now handled by the global round manager
+        // which works even when this component is unmounted (user on different tab)
+        // if (lockPrice !== null && currentPrice !== null) {
+        //   if (activeBet) {
+        //     onBetSettlement(marketName, lockPrice, currentPrice)
+        //   }
+        // }
         // Reset for next round
         const newStartTime = Date.now()
         timerStartRef.current = newStartTime

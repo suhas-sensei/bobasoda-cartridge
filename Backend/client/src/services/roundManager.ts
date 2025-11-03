@@ -48,6 +48,7 @@ class RoundManager {
   private currentPrices: MarketPrices = { ETH: null, BNB: null, STRK: null }
   private userAccount: AccountInterface | null = null
   private timerInterval: NodeJS.Timeout | null = null
+  private priceInterval: NodeJS.Timeout | null = null
 
   private constructor() {
     this.startTimer()
@@ -77,8 +78,38 @@ class RoundManager {
     this.currentPrices[marketName as keyof MarketPrices] = price
   }
 
+  private async fetchAllPrices() {
+    try {
+      // Fetch ETH price
+      const ethResponse = await fetch('https://hermes.pyth.network/v2/updates/price/latest?ids[]=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace')
+      const ethData = await ethResponse.json()
+      const ethPrice = parseFloat(ethData.parsed[0].price.price) * Math.pow(10, ethData.parsed[0].price.expo)
+      this.currentPrices.ETH = ethPrice
+
+      // Fetch BNB price
+      const bnbResponse = await fetch('https://hermes.pyth.network/v2/updates/price/latest?ids[]=0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f')
+      const bnbData = await bnbResponse.json()
+      const bnbPrice = parseFloat(bnbData.parsed[0].price.price) * Math.pow(10, bnbData.parsed[0].price.expo)
+      this.currentPrices.BNB = bnbPrice
+
+      // Fetch STRK price
+      const strkResponse = await fetch('https://hermes.pyth.network/v2/updates/price/latest?ids[]=0x6a182399ff70ccf3e06024898942028204125a819e519a335ffa4579e66cd870')
+      const strkData = await strkResponse.json()
+      const strkPrice = parseFloat(strkData.parsed[0].price.price) * Math.pow(10, strkData.parsed[0].price.expo)
+      this.currentPrices.STRK = strkPrice
+    } catch (error) {
+      console.error('❌ Round Manager: Failed to fetch prices:', error)
+    }
+  }
+
   private startTimer() {
     console.log('🎮 Round Manager: Starting global timer')
+
+    // Fetch prices immediately and then every 2 seconds
+    this.fetchAllPrices()
+    this.priceInterval = setInterval(() => {
+      this.fetchAllPrices()
+    }, 2000)
 
     this.timerInterval = setInterval(() => {
       const stored = localStorage.getItem('global_round_start')
@@ -100,15 +131,21 @@ class RoundManager {
 
       // Settle bets at 100% (60 seconds)
       if (progress >= 100) {
-        Object.keys(this.marketBets).forEach((market) => {
-          if (!this.hasSettled[market] && this.marketBets[market]) {
-            this.settleBet(market)
+        const marketsToSettle = Object.keys(this.marketBets).filter(
+          market => !this.hasSettled[market] && this.marketBets[market]
+        )
+
+        if (marketsToSettle.length > 0) {
+          console.log(`\n🎯 Round Manager: Settling ${marketsToSettle.length} market(s): ${marketsToSettle.join(', ')}`)
+          marketsToSettle.forEach((market) => {
+            console.log(`   -> Starting settlement for ${market}`)
             this.hasSettled[market] = true
-          }
-        })
+            this.settleBet(market)
+          })
+        }
 
         // Reset for next round after settlement
-        if (elapsed >= ROUND_DURATION + 1000) { // Give 1 second buffer for settlement
+        if (elapsed >= ROUND_DURATION + 2000) { // Give 2 second buffer for all settlements
           console.log('🔄 Round Manager: Resetting for next round')
           this.lockPrices = { ETH: null, BNB: null, STRK: null }
           this.hasSettled = { ETH: false, BNB: false, STRK: false }
@@ -302,6 +339,9 @@ class RoundManager {
   public cleanup() {
     if (this.timerInterval) {
       clearInterval(this.timerInterval)
+    }
+    if (this.priceInterval) {
+      clearInterval(this.priceInterval)
     }
   }
 }
